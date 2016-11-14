@@ -1,0 +1,5 @@
+项目所需的库，需要自行安装
+$ pip install file
+logging；asyncio; os; json; time;
+datetime; aiomysql; uuid; aiohttp; jinja2; 
+其中errors是重命名的模块
