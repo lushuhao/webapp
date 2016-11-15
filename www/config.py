@@ -6,19 +6,23 @@ class Dict(dict):
     '''
     def __init__(self, names=(), values=(), **kw):
         super(Dict, self).__init__(**kw)
+        # $ Dict = dict(zip(['a','b'],['1','2']))
+        # {'a':1, 'b':2}
         for k, v in zip(names, values):
             self[k] = v
 
+    # 当使用点号获取实例属性时，如果属性不存在就自动调用__getattr__方法
     def __getattr__(self, key):
         try:
             return self[key]
         except KeyError:
             raise AttributeError(r"'Dict' object has no attribute '%s'" % key)
 
+    # 当设置类实例属性时自动调用，如j.name=5 就会调用__setattr__方法  self.[name]=5
     def __setattr__(self, key, value):
         self[key] = value
 
-# 合并
+# 覆盖
 def merge(defaults, override):
     r = {}
     for k, v in defaults.items():
@@ -48,3 +52,4 @@ except ImportError:
     pass
 
 configs = toDict(configs)
+
