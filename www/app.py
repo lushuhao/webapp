@@ -18,6 +18,8 @@ from coroweb import add_routes, add_static
 def init_jinja2(app, **kw):
 	logging.info('init jinja2...')
 	options = dict(
+		# dict.get(key, default=None)
+		# default——返回键不存在的情况下默认值，默认None
 		autoescape=kw.get('autoescape', True),
 		block_start_string=kw.get('block_start_string', '{%'),
 		block_end_string=kw.get('block_end_string', '%}'),
@@ -27,11 +29,17 @@ def init_jinja2(app, **kw):
 	)
 	path = kw.get('path', None)
 	if path is None:
+		# os.path.join(path, name): 连接目录与文件名或目录
+		# os.path.dirname(path): 返回文件路径
+		# os.path.adspath(name): 获得绝对路径
 		path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 	logging.info('set jinja2 template path: %s' % path)
+	# 使用缺省配置创建了一个Environment实例，并指定FileSystemLoader作为模板加载器
+	# 从path路径查找加载模板，
 	env = Environment(loader=FileSystemLoader(path), **options)
 	filters = kw.get('filters', None)
 	if filters is not None:
+		# dict.items() 返回可遍历的(键，值)元组数组
 		for name, f in filters.items():
 			env.filters[name] = f
 	app['__templating__'] = env
@@ -40,6 +48,8 @@ def init_jinja2(app, **kw):
 # 在每个响应前打印日志
 async def logger_factory(app, handler):
 	async def logger(request):
+		# request.method 表示提交请求使用的HTTP方法，大写。例（POST/GET）
+		# request.path 表示提交请求页面完整地址的字符串，不包括域名
 		logging.info('Request: %s %s' % (request.method, request.path))
 		# await asyncio.sleep(0.3)
 		return (await handler(request))
@@ -48,13 +58,16 @@ async def logger_factory(app, handler):
 
 
 async def data_factory(app, handler):
+	# 解析数据
 	async def parse_data(request):
 		logging.info('data_factory...')
 		# 处理POST请求
 		if request.method == 'POST':
+			# content_type 上传文件的内容类型
 			# 判断content_type类型是否为JSON数据格式，如果是，需进行JSON数据交换处理
 			# JSON (JavaScript Object Notation)为JavaScript原生格式，可以在其中被直接使用
 			if request.content_type.startswith('application/json'):
+				# request.json() 解码JSON数据
 				request.__data__ = await request.json()
 				if not isinstance(request.__data__, dict):
 					return web.HTTPBadRequest(text='JSON body must be object.')
@@ -66,15 +79,14 @@ async def data_factory(app, handler):
 				return web.HTTPBadRequest(text='Unsupported Content-Type: %s' % content_type)
 		# 处理GET请求
 		elif request.method == 'GET':
+			# query_string 未解析的原始请求字符串
 			qs = request.query_string
 			request.__data__ = {k: v[0] for k, v in parse.parse_qs(qs, True).items()}
 			logging.info('request query: %s' % request.__data__)
 		else:
 			request.__data__ = dict()
 		return (await handler(request))
-
 	return parse_data
-
 
 # 将后端的返回值封装成浏览器可正确实现的Response对象
 async def response_factory(app, handler):
@@ -101,6 +113,7 @@ async def response_factory(app, handler):
 				resp.content_type = 'application/json;charset=utf-8'
 				return resp
 			else:
+				#　浏览器响应是一个dict，body=test.html
 				resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
 				resp.content_type = 'text/html;charset=utf-8'
 				return resp
@@ -129,6 +142,7 @@ def datetime_filter(t):
 		return u'%s小时前' % (delta // 3600)
 	if delta < 604800:
 		return u'%s天前' % (delta // 86400)
+	# 根据一个时间戳创建一个datatime对象
 	dt = datetime.fromtimestamp(t)
 	return u'%s年%s月%s日' % (dt.year, dt.month, dt.day)
 
@@ -139,9 +153,9 @@ async def init(loop):
 	# 通过orm来访问数据库
 	await orm.create_pool(loop=loop, host='127.0.0.1', port=3306, user='www-data', password='www-data', db='awesome')
 	app = web.Application(loop=loop, middlewares=[
-		logger_factory, response_factory
-	])
+		logger_factory, response_factory])
 	init_jinja2(app, filter=dict(datetime=datetime_filter))
+	# handlers框架，处理带参数的URL
 	add_routes(app, 'handlers')
 	add_static(app)
 	# router处理函数与对应的URL绑定，浏览器敲击URL是返回处理函数的内容
