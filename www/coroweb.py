@@ -1,14 +1,19 @@
+'''
+    自封装的Web框架
+'''
 import functools, logging, inspect, os, asyncio
 import errors   # 重命名的模块，必须下载
 from aiohttp import web
 from urllib import parse
-# *********RequestHandler模块的主要任务为在View（网页）向Controller（路由）之间建立桥梁，与response_factory之间相对应。web框架把Controller的指令构造成一个request发送给View，然后动态生成前段页面；用户在前端页面的某些操作，然后通过request传回到后端，在传回到后端之前先将request进行解析，转变成后端可以处理的事务。RequestHandler负责对这些request进行标准化处理。**************
+
 
 def get(path):
     # Define decorator @get('/path')
     # 函数经过该函数后，即加入__method__、__route__属性
     def decorator(func):
         @functools.wraps(func)
+        # 经过decorator，函数的__name__会发生变化，所以加入wraps()
+        # 用来替换 wrapper.__name__ = func.__name__
         def wrapper(*args, **kw):
             return func(*args, **kw)
         wrapper.__method__ = 'GET'
@@ -31,8 +36,23 @@ def post(path):
 
 def get_required_kw_args(fn):
     args = []
+    # The Signature object represents the call signature of a callable object
+    # >>> from inspect import signature
+    # >>> def foo(a, *, b:int, **kwargs):
+    # ...     pass
+    # >>> sig = signature(foo)
+    # >>> str(sig)
+    # '(a, *, b:int, **kwargs)'
+    # >>> str(sig.parameters['b'])
+    # 'b:int'
     params = inspect.signature(fn).parameters
     for name, param in params.items():
+	    # class inspect.Parameter(name, kind, *, default=Parameter.empty, annotation=Parameter.empty):
+	    # empty -> A special class-level marker to specify absence of default values and annotations.
+	    # kind -> Describes how argument values are bound to the parameter.
+	    # KEYWORD_ONLY -> Value must be supplied as a keyword argument.
+        # default -> The default value for the parameter. If the parameter has no default value, this attribute is set to Parameter.empty.
+        # name -> The name of the parameter as a string.
         if param.kind == inspect.Parameter.KEYWORD_ONLY and param.default == inspect.Parameter.empty:
             args.append(name)
     return tuple(args)
@@ -54,6 +74,7 @@ def has_named_kw_args(fn):
 def has_var_kw_arg(fn):
     params = inspect.signature(fn).parameters
     for name, param in params.items():
+	    # VAR_KEYWORD -> A dict of keyword arguments that aren’t bound to any other parameter.
         if param.kind == inspect.Parameter.VAR_KEYWORD:
             return True
 
@@ -65,13 +86,19 @@ def has_request_arg(fn):
         if name == 'request':
             found = True
             continue
-        if found and (param.kind != inspect.Parameter.VAR_POSITIONAL and param.kind != inspect.Parameter.KEYWORD_ONLY and param.kind != inspect.Parameter.VAR_KEYWORD):
+        if found and (param.kind != inspect.Parameter.VAR_POSITIONAL and param.kind != inspect.Parameter.KEYWORD_ONLY
+                      and param.kind != inspect.Parameter.VAR_KEYWORD):
             raise ValueError('request parameter must be the last named parameter in function: %s%s' % (fn.__name__, str(sig)))
     return found
 
 # RequestHandler目的就是从URL函数中分析其需要接受的参数，从request中获取必要的参数，
 # URL函数不一定是一个coroutine，因此用RequestHandler()封装一个URL处理函数
 class RequestHandler(object):
+    '''
+    RequestHandler模块的主要任务为在View（网页）向Controller（路由）之间建立桥梁，与response_factory之间相对应。
+    web框架把Controller的指令构造成一个request发送给View，然后动态生成前段页面；用户在前端页面的某些操作，然后通过request传回到后端，
+    在传回到后端之前先将request进行解析，转变成后端可以处理的事务。RequestHandler负责对这些request进行标准化处理。
+    '''
 
     def __init__(self, app, fn):
         self._app = app
@@ -84,7 +111,7 @@ class RequestHandler(object):
 
     # # 任何一个类，只需要定义一个__call__()方法，就可以直接对实例进行调用
     # async def __call__(self, request):
-    #     # inspect.signature.parameters:返回一个含有变量名称的有序表
+    #     # inspect.signature().parameters:返回一个含有变量名称的有序表
     #     # 获取函数参数表
     #     required_args = inspect.signature(self._func).parameters
     #     logging.info('required args: %s' % required_args)
@@ -118,12 +145,17 @@ class RequestHandler(object):
     #     except errors.APIError as e:
     #         return dict(error=e.error, data=e.data, message=e.message)
     async def __call__(self, request):
+	    #　__call__函数，这个类型就可调用，用于实例自身的调用
+	    #　dict('name') 是__call__起作用
+	    #  dict['name'] dict默认行为
         kw = None
         if self._has_var_kw_arg or self._has_named_kw_args or self._required_kw_args:
             if request.method == 'POST':
                 if not request.content_type:
+	                # 判断大小写，并改成小写，可省略
                     return web.HTTPBadRequest('Missing Content-Type.')
                 ct = request.content_type.lower()
+                # startswith()函数判断文本是否以某个字符开始
                 if ct.startswith('application/json'):
                     params = await request.json()
                     if not isinstance(params, dict):
@@ -132,6 +164,7 @@ class RequestHandler(object):
                 elif ct.startswith(
                         'application/x-www-form-urlencoded') or ct.startswith(
                         'multipart/form-data'):
+	                # For accessing to form data with "POST" method use Request.post()
                     params = await request.post()
                     kw = dict(**params)
                 else:
@@ -186,13 +219,18 @@ def add_route(app, fn):
 
 # 添加一个模块的所有路由
 def add_routes(app, module_name):
+	# rfind()方法返回所在子str 被找到的最后一个索引，或者-1(当没有索引)
+	# 例如：'flask'.rfind('.')    返回  -1
     n = module_name.rfind('.')
     if n == (-1):
+	    # __import__ 获得特定的函数，在事先不知道名字的时候使用
         mod = __import__(module_name, globals(), locals())
     else:
+	    # 'aiohttp.web.reponse()' 返回的是'reponse()'
         name = module_name[n + 1:]
-        mod = getattr(__import__(module_name[:n], globals(), locals(), [name]),
-                      name)
+        # getattr(object, name[, default])
+        # 根据属性名返回对象值。如果‘name’是对象属性的名称，则返回对应属性的值
+        mod = getattr(__import__(module_name[:n], globals(), locals(), [name]),name)
     # try:
     #     mod = __import__(module_name, fromlist=['get_submodule'])
     # except ImportError as e:
@@ -207,6 +245,7 @@ def add_routes(app, module_name):
         # 取能调用的，说明是方法
         if callable(fn):
             # 检测'__method__'和'__route__'属性
+            # 找不到的时候返回None
             method = getattr(fn, '__method__', None)
             path = getattr(fn, '__route__', None)
             # 如果method和path均不为空，说明是定义的处理方法，加到app对象里处理route
@@ -220,6 +259,7 @@ def add_routes(app, module_name):
                 # app.router.add_route(method, path, RequestHandler(func))
 
 def add_static(app):
+	# 获取路径
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
     app.router.add_static('/static/', path)
     logging.info('add static %s => %s' % ('/static/', path))
