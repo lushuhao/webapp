@@ -8,6 +8,7 @@ async def destroy_pool(): #销毁连接池
     global __pool
     if __pool is not None:
         __pool.close()
+        # 先pool.close(),再pool.wait_closed()
         await  __pool.wait_closed()
 
 # async await 将调用一个子协程（也就是在一个协程中调用另一个协程）并直接获得子协程的返回结果
@@ -67,13 +68,13 @@ async def execute(sql, args, autocommit=True):
         return affected
 
 
-# 这是一个元类,它定义了如何来构造一个类,任何定义了__metaclass__属性或指定了metaclass的都会通过元类定义的构造方法构造类
+# 这是一个元类,它定义了如何来构造一个类,任何定义了__metaclass__属性或指定了关键字参数metaclass的都会通过元类定义的构造方法构造类
 # 任何继承自Model的类,都会自动通过ModelMetaclass扫描映射关系,并存储到自身的类属性
 class ModelMetaclass(type):
     def __new__(cls, name, bases, attrs):
         # cls: 当前准备创建的类对象,相当于self
         # name: 类名,比如User继承自Model,当使用该元类创建User类时,name=User
-        # bases: 父类的元组
+        # bases: 类继承的父类集合
         # attrs: 属性(方法)的字典,比如User有__table__,id,等,就作为attrs的keys
         # 排除Model类本身,因为Model类主要就是用来被继承的,其不存在与数据库表的映射
         if name == 'Model':
@@ -92,6 +93,7 @@ class ModelMetaclass(type):
             # 判断val是否属于Field属性类
             if isinstance(val, Field):
                 # 把Field属性类保存在映射映射关系表，并从原属性列表中删除
+                # 否则，容易造成运行时错误（实例的属性会遮盖类的同名属性）
                 logging.info('   found mapping: %s ==> %s' % (key, val))
                 mappings[key] = attrs.pop(key)
                 # 查找并检验主键是否唯一，主键初始值为None，找到一个主键后会被设置为key，若if val.primary_key: 再次为真，则会报错
@@ -179,8 +181,10 @@ class Model(dict, metaclass=ModelMetaclass):
                 args.extend(limit)
             else:
                 raise ValueError('Invalid limit value: %s' % limit)
-        resultset = await select(' '.join(sql), args)   # 调用前面定义的select函数，没有指定size,因此会fetchall
-        return [cls(**r) for r in resultset]            # 返回结果，结果是list对象，里面的元素是dict类型的
+        # 调用前面定义的select函数，没有指定size,因此会fetchall
+        resultset = await select(' '.join(sql), args)
+        # 返回结果，结果是list对象，里面的元素是dict类型的
+        return [cls(**r) for r in resultset]
 
     # 根据列名和条件查看数据库有多少条信息
     @classmethod
@@ -204,8 +208,6 @@ class Model(dict, metaclass=ModelMetaclass):
     # 更改一个实例在数据库的信息
     async def update(self):
         args = list(map(self.get, self.__fields__))
-        # args.append(self.getValue(self.__primary_key__))
-        # 第103行已经将primary_key加入，无需再次加入
         rows = await execute(self.__update__, args)
         if rows != 1:
             logging.warning('failed to update record: affected rows: %s' % rows)
@@ -219,16 +221,18 @@ class Model(dict, metaclass=ModelMetaclass):
 
     # 把一个实例保存到数据库
     async def save(self):
+        # self.__mappings__是除主键外的所有属性名，先用map对其取值并放在args中
         args = list(map(self.getValueOrDefault, self.__mappings__))
-        # args.append(self.getValueOrDeflault(self.__primary_key__))
-        # 第103行已经将primary_key加入，无需再次加入
+        # 存放主键
         rows = await execute(self.__insert__, args)
+        # 储存功能自然是插入字段，由于返回值是变动数，应该是只影响一个字段，如果多了就有问题
         if rows != 1:
             logging.warning('failed to insert record: affected rows: %s' % rows)
 
 
 class Field(object):
 
+	# 负责保存数据库表的字段名和字段类型
     def __init__(self, name, column_type, primary_key, default):
         self.name = name
         self.column_type = column_type
@@ -236,7 +240,7 @@ class Field(object):
         self.default = default
 
     def __str__(self):
-        return '<%s, %s:%s>' % (self.__class__.__name__, self.column_type, self.name)
+       return '<%s, %s:%s>' % (self.__class__.__name__, self.column_type, self.name)
 
 
 class StringField(Field):
