@@ -7,13 +7,16 @@ import time, uuid
 from orm import Model, StringField, BooleanField, FloatField, TextField
 
 def next_id():
-	# '%015d' 用0补充位置是%d和前方0一共15位
+	# '%015d' 用0补充位置使%d和前方0一共15位
+	# time.time() 返回当前时间戳
+	# 时间戳是指格林威治时间1970年1月1日00:00:00起至现在的总秒数
+	# uuid 是128位的全局唯一标识符，通常由32字节的字符串表示。uuid4()——基于随机数，hex十六进制
 	return '%015d%s000' % (int(time.time() * 1000), uuid.uuid4().hex)
 
 class User(Model):
 	__table__ = 'users'
 
-	# 主键id的缺省值是函数next_id
+	# 主键id的缺省值是函数next_id （缺省值就是默认值。是指一个属性、参数在被修改前的初始值）
 	id = StringField(primary_key=True, default=next_id, ddl='varchar(50)')
 	email = StringField(ddl='varchar(50)')
 	passwd = StringField(ddl='varchar(50)')
