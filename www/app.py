@@ -154,7 +154,8 @@ async def init(loop):
 	await orm.create_pool(loop=loop, host='127.0.0.1', port=3306, user='www-data', password='www-data', db='awesome')
 	app = web.Application(loop=loop, middlewares=[
 		logger_factory, response_factory])
-	init_jinja2(app, filter=dict(datetime=datetime_filter))
+	# filter需要在初始化jinja2时设置
+	init_jinja2(app, filters=dict(datetime=datetime_filter))
 	# handlers框架，处理带参数的URL
 	add_routes(app, 'handlers')
 	add_static(app)
