@@ -15,7 +15,6 @@
     {% for blog in blogs %}
         <article class="uk-article">
             <h2><a href="/blog/{{ blog.id }}">{{ blog.name }}</a></h2>
-            <!-- {{y|y=x+2}} 分隔线，前面的说明有哪些元素，后面的说明元素的特征-->
             <p class="uk-article-meta">发表于{{ blog.created_at|datetime }}</p>
             <p>{{ blog.summary }}</p>
             <p><a href="/blog/{{ blog.id }}">继续阅读 <i class="uk-icon-angle-double-right"></i></a></p>
